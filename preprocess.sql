@@ -45,10 +45,19 @@ DELETE FROM temp_appear WHERE primaryPosition IN ('P', '??');
 SELECT COUNT(*) FROM temp_appear;
 
 /* Merge on salary */
+DROP TABLE IF EXISTS temp_salary;
+CREATE TABLE temp_salary AS
+SELECT yearID, teamID, lgID, playerID, salary,
+    PERCENT_RANK() OVER (
+      PARTITION BY yearID
+      ORDER BY Salary
+    ) AS salaryRank
+FROM salaries;
+
 DROP TABLE IF EXISTS temp_t2;
 CREATE TABLE temp_t2 AS
-SELECT t1.*, t2.salary
- FROM temp_appear t1, salaries t2
+SELECT t1.*, t2.salary, t2.salaryRank
+ FROM temp_appear t1, temp_salary t2
 WHERE t1.yearID = t2.yearID
   AND t1.teamID = t2.teamID
   AND t1.lgID = t2.lgID
@@ -68,7 +77,7 @@ SELECT t1.*,
     H - "2B" - "3B" - HR AS "1B",
     ((H - "2B" - "3B" - HR) + 2.0*"2B" + 3.0*"3B" + 4.0*HR) / CAST(AB AS float) AS SLUG,
     CAST((H + BB + HBP) AS float) / CAST((AB + BB + HBP + SF) AS float) AS OBP,
-    t2.salary, t2.G_all, t2.primaryPosition
+    t2.salary, t2.salaryRank, t2.G_all, t2.primaryPosition
   FROM batting t1, temp_t2 t2
 WHERE t1.yearID = t2.yearID
   AND t1.teamID = t2.teamID
@@ -111,7 +120,7 @@ SELECT COUNT(*) FROM temp_t5;
 
 /* Clean up Team Names */
 UPDATE temp_t5 SET TeamName = 'Phillies' WHERE teamID = 'PHI';
-UPDATE temp_t5 SET TeamName = 'Priates' WHERE teamID = 'PIT';
+UPDATE temp_t5 SET TeamName = 'Pirates' WHERE teamID = 'PIT';
 UPDATE temp_t5 SET teamName = 'Red Sox' WHERE teamID = 'BOS';
 UPDATE temp_t5 SET teamNAme = 'Astros' WHERE teamID = 'HOU';
 UPDATE temp_t5 SET teamName = 'Indians' WHERE teamID = 'CLE';
@@ -166,3 +175,25 @@ SELECT t6.*,
     ((OBP / avg_yr_lg_OBP) + (SLUG / avg_yr_lg_SLUG) - 1) * 100.0 AS OPS_PLUS
   FROM temp_t6 t6;
 SELECT COUNT(*) FROM temp_t7;
+
+DROP TABLE IF EXISTS temp_t8;
+CREATE TABLE temp_t8 AS
+SELECT t7.*,
+  CASE 
+    WHEN yearInLeague <= 3 THEN "1-3"
+    WHEN yearInLeague >= 11 THEN "11+"
+    ELSE CAST(yearInLeague AS text)
+  END AS yearInLeagueGroup
+  FROM temp_t7 t7;
+
+SELECT COUNT(*) FROM temp_t8;
+
+DROP TABLE IF EXISTS temp_t9;
+CREATE TABLE temp_t9 AS
+SELECT t8.*, maxYearsPlayed
+  FROM temp_t8 t8,
+  (SELECT playerID, MAX(yearInLeague) AS maxYearsPlayed FROM temp_t8
+   GROUP BY playerID) t9
+WHERE t8.playerID = t9.playerID;
+
+SELECT COUNT(*) FROM temp_t9;
